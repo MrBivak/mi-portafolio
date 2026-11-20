@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Presupuesto con permuta</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2430;--mut:#667085;--line:#e3e7ee;--acc:#1f6feb;--ok:#127a47;--okbg:#e6f5ec;--warn:#9a6700;--warnbg:#fff4d6;--bad:#b42318;--badbg:#fde8e6}
+@media(prefers-color-scheme:dark){:root{--bg:#10141a;--card:#181e27;--ink:#e8ecf2;--mut:#9aa6b8;--line:#28313f;--acc:#5b9bff;--ok:#4cc58a;--okbg:#12281d;--warn:#e3b341;--warnbg:#2d2410;--bad:#ff7b72;--badbg:#321512}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 16px 4px;max-width:1180px;margin:auto}
+h1{margin:0;font-size:22px} header p{margin:4px 0 0;color:var(--mut)}
+main{max-width:1180px;margin:auto;padding:12px 16px 60px;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;align-items:start}
+@media(max-width:920px){main{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{margin:0 0 4px;font-size:16px} .hint{color:var(--mut);font-size:13px;margin:0 0 12px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+input,select,textarea{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=checkbox]{width:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px}
+.row{display:grid;gap:8px;align-items:end;margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
+.row.item{grid-template-columns:2fr 1.1fr .7fr .9fr auto}
+.row.svc{grid-template-columns:1.4fr 1.2fr .8fr 1fr}
+@media(max-width:620px){.row.item,.row.svc{grid-template-columns:1fr 1fr}.row .full{grid-column:1/-1}}
+button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 12px;border-radius:8px;cursor:pointer;font:inherit}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.x{padding:6px 9px;color:var(--bad)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.sum{position:sticky;top:12px}
+@media(max-width:920px){.sum{position:static}}
+.line{display:flex;justify-content:space-between;gap:10px;padding:5px 0}
+.line.t{border-top:1px solid var(--line);margin-top:6px;padding-top:9px;font-weight:700;font-size:17px}
+.mut{color:var(--mut)} .neg{color:var(--ok)}
+.alert{padding:8px 10px;border-radius:8px;margin:6px 0;font-size:13px}
+.alert.bad{background:var(--badbg);color:var(--bad)} .alert.warn{background:var(--warnbg);color:var(--warn)} .alert.ok{background:var(--okbg);color:var(--ok)}
+.chk{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.chk small{display:block;color:var(--mut)}
+.pill{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:6px 0 2px}
+.pill i{display:block;height:100%;background:var(--acc)}
+textarea{min-height:230px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+@media print{body{background:#fff;color:#000}.noprint,.bar,button{display:none!important}main{display:block}section{break-inside:avoid;border:1px solid #ccc}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Presupuesto con permuta de alojamiento</h1>
+  <p>Calcula cuánto reducir la factura a cambio de estancia, y detecta qué falta por acordar antes de empezar.</p>
+</header>
+<main>
+<div>
+
+<section>
+  <h2>1 · Proyecto</h2>
+  <p class="hint">Datos generales del cliente y la moneda.</p>
+  <div class="grid">
+    <div><label>Cliente / alojamiento</label><input data-k="cliente" placeholder="Hotel Ejemplo"></div>
+    <div><label>Moneda</label><select data-k="moneda"><option>EUR</option><option>USD</option><option>COP</option><option>MXN</option><option>GBP</option></select></div>
+    <div><label>IVA / impuesto sobre servicios (%)</label><input type="number" data-k="iva" min="0" step="0.5"></div>
+    <div><label>Horas productivas por día</label><input type="number" data-k="hdia" min="1" step="0.5"></div>
+  </div>
+</section>
+
+<section>
+  <h2>2 · Presupuesto de trabajo</h2>
+  <p class="hint">Todo lo que vas a entregar. Tipo: <b>horas</b> (cantidad × precio/hora), <b>fijo</b> (cantidad × precio) o <b>mensual</b> (meses × cuota).</p>
+  <div id="items"></div>
+  <div class="bar noprint"><button class="pri" id="addItem">+ Añadir partida</button><button id="clearItems">Vaciar ejemplo</button></div>
+</section>
+
+<section>
+  <h2>3 · Alojamiento</h2>
+  <p class="hint">Pregunta ambas tarifas y por escrito. La mensual casi siempre es la que debes usar.</p>
+  <div class="grid">
+    <div><label>Noches de estancia</label><input type="number" data-k="noches" min="0"></div>
+    <div><label>Tarifa habitación / noche</label><input type="number" data-k="tDia" min="0" step="0.01"></div>
+    <div><label>Tarifa habitación / mes (30 noches)</label><input type="number" data-k="tMes" min="0" step="0.01"></div>
+    <div><label>Base para descontar</label>
+      <select data-k="base"><option value="mes">Tarifa mensual</option><option value="dia">Tarifa diaria</option><option value="alt">Mi coste alternativo</option></select></div>
+    <div><label>Mi coste alternativo / noche</label><input type="number" data-k="alt" min="0" step="0.01"></div>
+    <div><label>Fianza / depósito</label><input type="number" data-k="fianza" min="0" step="0.01"></div>
+    <div><label>Impuestos de la tarifa (%)</label><input type="number" data-k="tasa" min="0" step="0.5"></div>
+    <div><label>¿Tarifa ya incluye impuestos?</label><select data-k="tasaIncl"><option value="1">Sí</option><option value="0">No</option><option value="u">No lo sé</option></select></div>
+    <div><label>Margen de seguridad (%)</label><input type="number" data-k="margen" min="0" max="60" step="1"></div>
+  </div>
+  <p class="hint">El margen de seguridad reduce el crédito aplicado para cubrirte de imprevistos (cambios de tarifa, extras, retrasos).</p>
+</section>
+
+<section>
+  <h2>4 · ¿Qué incluye la estancia?</h2>
+  <p class="hint">Marca cada servicio. Lo incluido suma valor; lo no incluido es un coste que asumes tú; lo «sin confirmar» es un riesgo y se avisa. Pon cuánto te costaría pagarlo por tu cuenta.</p>
+  <div id="svcs"></div>
+  <div class="bar noprint"><button id="addSvc">+ Añadir servicio</button></div>
+</section>
+
+<section>
+  <h2>5 · Condiciones a acordar por escrito</h2>
+  <p class="hint">Lo que casi siempre falla cuando no se negocia de antemano. Marca lo que ya está cerrado.</p>
+  <div id="chks"></div>
+  <div class="pill"><i id="chkBar"></i></div><div class="mut" id="chkTxt"></div>
+</section>
+
+<section>
+  <h2>6 · Texto para el cliente</h2>
+  <textarea id="txt" readonly></textarea>
+  <div class="bar noprint"><button class="pri" id="copy">Copiar texto</button><button onclick="print()">Imprimir / PDF</button><button id="exp">Exportar JSON</button><button id="imp">Importar JSON</button><button id="reset">Reiniciar todo</button></div>
+  <input type="file" id="file" accept=".json" hidden>
+</section>
+</div>
+
+<aside class="sum">
+<section>
+  <h2>Resumen</h2>
+  <div class="line"><span>Presupuesto de trabajo</span><b id="rBud"></b></div>
+  <div class="line mut"><span>Horas totales</span><span id="rHrs"></span></div>
+  <div class="line"><span>Alojamiento (<span id="rN"></span> noches)</span><span id="rLod"></span></div>
+  <div class="line"><span>Servicios incluidos</span><span id="rInc"></span></div>
+  <div class="line"><span>Margen de seguridad</span><span id="rMar"></span></div>
+  <div class="line"><span>Crédito aplicado</span><b class="neg" id="rCred"></b></div>
+  <div class="line t"><span>A cobrar en efectivo</span><span id="rCash"></span></div>
+  <div class="line mut"><span>+ impuestos sobre ese efectivo</span><span id="rCashTax"></span></div>
+  <div class="pill"><i id="rBar"></i></div>
+  <div class="mut" id="rPct"></div>
+  <hr style="border:0;border-top:1px solid var(--line);margin:12px 0">
+  <div class="line"><span>Efectivo por hora</span><span id="rHr"></span></div>
+  <div class="line"><span>Noches que cubre el presupuesto</span><span id="rCover"></span></div>
+  <div class="line"><span>Días de trabajo necesarios</span><span id="rDays"></span></div>
+</section>
+<section>
+  <h2>Riesgo si algo no está acordado</h2>
+  <div class="line"><span>Servicios no incluidos</span><span id="rNo"></span></div>
+  <div class="line"><span>Servicios sin confirmar</span><span id="rUnk"></span></div>
+  <div class="line"><span>Impuestos de tarifa a tu cargo</span><span id="rTax"></span></div>
+  <div class="line"><span>Fianza inmovilizada</span><span id="rDep"></span></div>
+  <div class="line t"><span>Exposición máxima</span><span id="rExp"></span></div>
+</section>
+<section>
+  <h2>Alertas</h2>
+  <div id="alerts"></div>
+</section>
+</aside>
+</main>
+
+<script>
+const KEY='permuta-v1';
+const CHECKS=[
+ ['Fechas exactas de entrada y salida','Y qué pasa si el proyecto se retrasa por el cliente.'],
+ ['Tarifa congelada durante toda la estancia','Evita subidas en temporada alta.'],
+ ['Habitación asignada y sin cambios forzosos','Overbooking, eventos, reformas.'],
+ ['Prioridad de la habitación en temporada alta','O definir periodos en los que no se aplica.'],
+ ['Qué pasa si el hotel cancela o te echa','Compensación o pago en efectivo de lo pendiente.'],
+ ['Qué pasa si el proyecto se cancela a medias','Prorrata: noches usadas vs. trabajo entregado.'],
+ ['Tratamiento fiscal de la permuta','En muchos países ambas partes facturan y liquidan impuestos. Consulta a tu gestor.'],
+ ['Alcance cerrado y proceso de cambios','Todo lo extra se presupuesta aparte, en dinero o noches.'],
+ ['Plazos de aprobación y feedback del cliente','Sin esto el proyecto se alarga y las noches se consumen.'],
+ ['Costes de terceros a cargo del cliente','Dominios, hosting, licencias, plugins, stock, impresión.'],
+ ['Propiedad intelectual y entrega de archivos','Se cede al completarse el pago/compensación.'],
+ ['Mantenimiento posterior','Quién, cuánto y cómo se compensa tras la estancia.'],
+ ['Un único responsable de decisiones','Un contacto que apruebe, no cinco.'],
+ ['Permiso para usarlo en tu portafolio','Y para publicar el caso de éxito.'],
+ ['Todo confirmado por escrito (email / contrato)','Un acuerdo verbal no sirve si cambia el equipo.']
+];
+const SVC0=[
+ ['Desayuno',8,'dia'],['Comida',15,'dia'],['Cena',18,'dia'],
+ ['Lavandería',12,'semana'],['Toallas y cambio de sábanas',4,'semana'],
+ ['Limpieza de habitación',6,'semana'],['Electricidad / aire acondicionado',3,'dia'],
+ ['Agua / amenities',0,'dia'],['WiFi estable (apto para trabajar)',0,'dia'],
+ ['Espacio de trabajo cómodo',0,'dia'],['Parking',8,'dia'],['Tasa turística',1.5,'dia']
+].map(s=>({n:s[0],c:s[1],u:s[2],e:'unk'}));
+const def=()=>({cliente:'',moneda:'EUR',iva:21,hdia:5,noches:30,tDia:60,tMes:1100,base:'mes',alt:0,fianza:0,tasa:10,tasaIncl:'u',margen:15,
+ items:[{n:'Logotipo e identidad visual',t:'fijo',q:1,p:450},{n:'Manual de identidad corporativa',t:'fijo',q:1,p:300},{n:'Diseño web',t:'horas',q:30,p:40},{n:'Desarrollo web',t:'horas',q:50,p:40},{n:'Configuración de servidor y correo',t:'horas',q:6,p:50}],
+ svcs:SVC0.map(s=>({...s})),chk:{}});
+let S=def();
+try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(def(),JSON.parse(r))}catch(e){}
+const $=id=>document.getElementById(id);
+const num=v=>isFinite(parseFloat(v))?parseFloat(v):0;
+const fmt=n=>{try{return new Intl.NumberFormat('es-ES',{style:'currency',currency:S.moneda,maximumFractionDigits:2}).format(n)}catch(e){return n.toFixed(2)}};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mult=(u,N)=>u==='dia'?N:u==='semana'?N/7:u==='mes'?N/30:1;
+
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+function renderItems(){
+ $('items').innerHTML=S.items.map((it,i)=>`<div class="row item">
+  <div class="full"><label>Concepto</label><input data-i="${i}" data-f="n" value="${esc(it.n)}"></div>
+  <div><label>Tipo</label><select data-i="${i}" data-f="t">${['horas','fijo','mensual'].map(t=>`<option ${it.t===t?'selected':''}>${t}</option>`).join('')}</select></div>
+  <div><label>Cant.</label><input type="number" min="0" step="0.5" data-i="${i}" data-f="q" value="${it.q}"></div>
+  <div><label>Precio</label><input type="number" min="0" step="0.01" data-i="${i}" data-f="p" value="${it.p}"></div>
+  <button class="x noprint" data-del="${i}" title="Eliminar">✕</button></div>`).join('')||'<p class="hint">Sin partidas.</p>';
+}
+function renderSvcs(){
+ $('svcs').innerHTML=S.svcs.map((s,i)=>`<div class="row svc">
+  <div class="full"><label>Servicio</label><input data-s="${i}" data-f="n" value="${esc(s.n)}"></div>
+  <div><label>Estado</label><select data-s="${i}" data-f="e">
+    <option value="unk" ${s.e==='unk'?'selected':''}>Sin confirmar</option><option value="inc" ${s.e==='inc'?'selected':''}>Incluido</option><option value="no" ${s.e==='no'?'selected':''}>No incluido</option></select></div>
+  <div><label>Coste por</label><select data-s="${i}" data-f="u">${[['dia','día'],['semana','semana'],['mes','mes'],['est','estancia']].map(([v,l])=>`<option value="${v}" ${s.u===v?'selected':''}>${l}</option>`).join('')}</select></div>
+  <div><label>Coste (${S.moneda})</label><input type="number" min="0" step="0.01" data-s="${i}" data-f="c" value="${s.c}"></div></div>`).join('');
+}
+function renderChecks(){
+ $('chks').innerHTML=CHECKS.map((c,i)=>`<label class="chk"><input type="checkbox" data-c="${i}" ${S.chk[i]?'checked':''}><span>${esc(c[0])}<small>${esc(c[1])}</small></span></label>`).join('');
+}
+function bindInputs(){
+ document.querySelectorAll('[data-k]').forEach(el=>el.value=S[el.dataset.k]);
+}
+
+function calc(){
+ const N=num(S.noches);
+ let budget=0,hours=0;
+ S.items.forEach(it=>{const v=num(it.q)*num(it.p);budget+=v;if(it.t==='horas')hours+=num(it.q)});
+ const mo=N/30*num(S.tMes),da=N*num(S.tDia),al=N*num(S.alt);
+ const lodging=S.base==='mes'?mo:S.base==='dia'?da:al;
+ let inc=0,no=0,unk=0;
+ S.svcs.forEach(s=>{const v=num(s.c)*mult(s.u,N);if(s.e==='inc')inc+=v;else if(s.e==='no')no+=v;else unk+=v});
+ const gross=lodging+inc, margin=gross*num(S.margen)/100, credit0=gross-margin;
+ const credit=Math.min(credit0,budget), excess=Math.max(0,credit0-budget);
+ const cash=budget-credit, ivaPct=num(S.iva)/100;
+ const taxExp=S.tasaIncl==='1'?0:lodging*num(S.tasa)/100;
+ const exposure=no+unk+taxExp;
+ const perNight=N>0?gross/N:0;
+ return {N,budget,hours,lodging,inc,no,unk,gross,margin,credit0,credit,excess,cash,ivaPct,taxExp,exposure,mo,da,
+  cover:perNight>0?budget/(perNight*(1-num(S.margen)/100)):0,
+  days:num(S.hdia)>0?hours/num(S.hdia):0, perHr:hours>0?cash/hours:0};
+}
+
+function update(){
+ const r=calc(); save();
+ const set=(id,v)=>$(id).textContent=v;
+ set('rBud',fmt(r.budget));set('rHrs',r.hours.toFixed(1)+' h');set('rN',r.N);
+ set('rLod',fmt(r.lodging));set('rInc',fmt(r.inc));set('rMar','− '+fmt(r.margin));
+ set('rCred','− '+fmt(r.credit));set('rCash',fmt(r.cash));set('rCashTax',fmt(r.cash*r.ivaPct));
+ const pct=r.budget>0?r.credit/r.budget*100:0;
+ $('rBar').style.width=Math.min(100,pct)+'%';set('rPct',pct.toFixed(0)+'% del presupuesto se compensa con alojamiento');
+ set('rHr',r.hours>0?fmt(r.perHr)+'/h':'—');set('rCover',r.cover.toFixed(0)+' noches');set('rDays',r.days.toFixed(1)+' días');
+ set('rNo',fmt(r.no));set('rUnk',fmt(r.unk));set('rTax',fmt(r.taxExp));set('rDep',fmt(num(S.fianza)));
+ set('rExp',fmt(r.exposure+num(S.fianza)));
+
+ // alertas
+ const A=[],add=(c,t)=>A.push(`<div class="alert ${c}">${t}</div>`);
+ const nUnk=S.svcs.filter(s=>s.e==='unk').length;
+ if(nUnk)add('bad',`${nUnk} servicio(s) sin confirmar. Pregunta antes de cerrar el trato: cada uno puede ser un extra.`);
+ if(S.tasaIncl==='u')add('warn','No sabes si la tarifa incluye impuestos. Puede aumentar el coste real un '+num(S.tasa)+'%.');
+ if(r.excess>0)add('warn',`El alojamiento vale ${fmt(r.excess)} más que el presupuesto. Reduce noches, añade alcance o acuerda cómo se liquida la diferencia.`);
+ if(r.N>0&&r.days>r.N)add('bad',`Necesitas ~${r.days.toFixed(0)} días de trabajo y la estancia es de ${r.N}. Alarga la estancia o reduce horas.`);
+ if(r.budget>0&&r.cash/r.budget<0.25)add('warn','Cobras menos del 25% en efectivo. Recuerda que tienes costes que no se pagan en noches: impuestos, software, dominios, seguros.');
+ if(S.base==='mes'&&num(S.tMes)>0&&num(S.tDia)>0&&num(S.tMes)>num(S.tDia)*30)add('warn','La tarifa mensual es mayor que 30 noches sueltas: revisa los datos.');
+ if(S.base==='mes'&&r.N<28)add('warn','La tarifa mensual suele exigir ≥28-30 noches. Con menos, probablemente se aplique la diaria.');
+ if(num(S.fianza)>0)add('warn','La fianza inmoviliza dinero. Acuerda cuándo y cómo se devuelve (o que se descuente del trabajo).');
+ const done=CHECKS.filter((_,i)=>S.chk[i]).length;
+ if(done<CHECKS.length)add(done<CHECKS.length/2?'bad':'warn',`Faltan ${CHECKS.length-done} condiciones por acordar por escrito.`);
+ if(!A.length)add('ok','Todo confirmado. Listo para enviar la propuesta.');
+ $('alerts').innerHTML=A.join('');
+ $('chkBar').style.width=done/CHECKS.length*100+'%';set('chkTxt',`${done} de ${CHECKS.length} cerradas`);
+
+ // texto
+ const L=[];
+ L.push(`PROPUESTA ECONÓMICA${S.cliente?' · '+S.cliente:''}`,'');
+ S.items.forEach(it=>L.push(`- ${it.n}: ${fmt(num(it.q)*num(it.p))}`));
+ L.push('',`Total trabajo: ${fmt(r.budget)}`);
+ L.push(`Compensación en alojamiento (${r.N} noches${S.base==='mes'?', tarifa mensual':''}): − ${fmt(r.credit)}`);
+ L.push(`IMPORTE A ABONAR EN EFECTIVO: ${fmt(r.cash)} + impuestos aplicables`,'');
+ const inc=S.svcs.filter(s=>s.e==='inc'),no=S.svcs.filter(s=>s.e==='no');
+ L.push('El alojamiento incluye:');L.push(inc.length?inc.map(s=>'  · '+s.n).join('\n'):'  · (solo habitación)');
+ if(no.length){L.push('No incluido (a cargo del huésped):');L.push(no.map(s=>'  · '+s.n).join('\n'))}
+ L.push('','Condiciones acordadas:');
+ CHECKS.forEach((c,i)=>{if(S.chk[i])L.push('  ✓ '+c[0])});
+ $('txt').value=L.join('\n');
+}
+
+// eventos
+document.addEventListener('input',e=>{
+ const t=e.target;
+ if(t.dataset.k){S[t.dataset.k]=t.type==='number'?num(t.value):t.value;if(t.dataset.k==='moneda')renderSvcs();update()}
+ else if(t.dataset.i!==undefined){S.items[t.dataset.i][t.dataset.f]=t.dataset.f==='n'||t.dataset.f==='t'?t.value:num(t.value);update()}
+ else if(t.dataset.s!==undefined){S.svcs[t.dataset.s][t.dataset.f]=t.dataset.f==='c'?num(t.value):t.value;update()}
+ else if(t.dataset.c!==undefined){S.chk[t.dataset.c]=t.checked;update()}
+});
+document.addEventListener('click',e=>{
+ const d=e.target.dataset;
+ if(d.del!==undefined){S.items.splice(d.del,1);renderItems();update()}
+});
+$('addItem').onclick=()=>{S.items.push({n:'',t:'horas',q:1,p:40});renderItems();update()};
+$('clearItems').onclick=()=>{S.items=[];renderItems();update()};
+$('addSvc').onclick=()=>{S.svcs.push({n:'',c:0,u:'dia',e:'unk'});renderSvcs();update()};
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('txt').value);$('copy').textContent='Copiado ✓'}catch(e){$('txt').select();document.execCommand('copy')}setTimeout(()=>$('copy').textContent='Copiar texto',1500)};
+$('exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));a.download='permuta-'+(S.cliente||'cliente').replace(/\W+/g,'-')+'.json';a.click()};
+$('imp').onclick=()=>$('file').click();
+$('file').onchange=async e=>{try{S=Object.assign(def(),JSON.parse(await e.target.files[0].text()));init()}catch(x){alert('Archivo no válido')}};
+$('reset').onclick=()=>{if(confirm('¿Borrar todo y empezar de nuevo?')){S=def();init()}};
+
+function init(){renderItems();renderSvcs();renderChecks();bindInputs();update()}
+init();
+</script>
+</body>
+</html>
